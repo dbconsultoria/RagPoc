@@ -1,266 +1,271 @@
 # rag-local
 
-RAG (Retrieval-Augmented Generation) local, simples e sem frameworks. O projeto indexa os documentos
-da pasta `docs/` e responde perguntas em português **só com base neles**, sempre citando a fonte.
-Tudo roda na sua máquina: Ollama para embeddings e geração, DuckDB para armazenamento e busca.
+Local, simple, framework-free RAG (Retrieval-Augmented Generation). The project indexes the
+documents in the `docs/` folder and answers questions in Portuguese **based only on them**,
+always citing the source. Everything runs on your machine: Ollama for embeddings and generation,
+DuckDB for storage and search.
 
-Não usa LangChain, LlamaIndex nem banco vetorial dedicado. Cada peça é um módulo pequeno, que dá
-para ler de uma vez só.
+It doesn't use LangChain, LlamaIndex or a dedicated vector database. Each piece is a small
+module you can read in one sitting.
 
-## Requisitos
+> The CLI messages, the answer prompt and the evaluation file keys (`pergunta`, `fonte`,
+> `pagina`, `trecho`) are in Portuguese, because the target documents and questions are.
+
+## Requirements
 
 - Python 3.11+
-- [uv](https://docs.astral.sh/uv/) (gerenciador de pacotes e ambientes)
+- [uv](https://docs.astral.sh/uv/) (package and environment manager)
 - [Ollama](https://ollama.com/download)
 
-## Instalação
+## Installation
 
 ### 1. uv
 
-O `requirements.txt` serve só para instalar o uv. As dependências do projeto ficam no
+`requirements.txt` is only there to install uv. The project dependencies live in
 `pyproject.toml`.
 
 ```powershell
 python -m pip install -r requirements.txt
 ```
 
-Alternativas: `winget install astral-sh.uv` (Windows) ou o instalador oficial
+Alternatives: `winget install astral-sh.uv` (Windows) or the official installer
 (`powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`).
 
-> **`uv` não reconhecido?** O pip instala o executável na pasta `Scripts` do seu Python
-> (ex.: `C:\Users\<você>\AppData\Local\Programs\Python\Python312\Scripts`), que nem sempre está no
-> PATH. Adicione essa pasta ao PATH ou use `python -m uv ...` com esse mesmo Python.
-> Não instale o uv **dentro** da `.venv` do projeto: o `uv sync` remove o que não está no
+> **`uv` not recognized?** pip installs the executable in your Python's `Scripts` folder
+> (e.g. `C:\Users\<you>\AppData\Local\Programs\Python\Python312\Scripts`), which isn't always on
+> the PATH. Add that folder to the PATH, or run `python -m uv ...` with that same Python.
+> Don't install uv **inside** the project's `.venv`: `uv sync` removes anything that isn't in
 > `pyproject.toml`.
 
-### 2. Dependências do projeto
+### 2. Project dependencies
 
 ```powershell
-uv sync          # cria/atualiza .venv com as dependências e as de desenvolvimento (pytest)
+uv sync          # creates/updates .venv with the dependencies and the dev ones (pytest)
 uv run rag --help
 ```
 
-### 3. Ollama e modelos
+### 3. Ollama and models
 
-Instale o Ollama e confira se o servidor está no ar. No Windows e no macOS o app já sobe o
-servidor; no Linux, rode `ollama serve`.
+Install Ollama and check that the server is running. On Windows and macOS the app starts the
+server for you; on Linux, run `ollama serve`.
 
 ```powershell
 ollama --version
-curl http://localhost:11434/api/tags      # deve listar os modelos instalados
+curl http://localhost:11434/api/tags      # should list the installed models
 
-ollama pull nomic-embed-text              # embeddings, 768 dimensões (obrigatório)
-ollama pull qwen2.5:7b                    # geração (veja a seção "Modelo de geração")
+ollama pull nomic-embed-text              # embeddings, 768 dimensions (required)
+ollama pull qwen2.5:7b                    # generation (see "Generation model")
 ```
 
-## Onde colocar os documentos
+## Where to put your documents
 
-Coloque arquivos `.md`, `.txt`, `.pdf` e `.docx` na pasta **`docs/`**, na raiz do projeto.
-Subpastas são lidas recursivamente, e a fonte é gravada como caminho relativo
-(ex.: `contratos/2026/aditivo.pdf`). Arquivos ocultos e temporários do Office (`~$...`) são
-ignorados.
+Put `.md`, `.txt`, `.pdf` and `.docx` files in the **`docs/`** folder at the project root.
+Subfolders are read recursively, and the source is stored as a relative path
+(e.g. `contratos/2026/aditivo.pdf`). Hidden files and Office temporary files (`~$...`) are
+skipped.
 
-Se `docs/` não existir ou estiver vazia na primeira ingestão, o `rag ingest` cria três arquivos
-de exemplo para você testar na hora. Para usar outra pasta, mude `docs_dir` no `config.toml` ou
-defina `RAG_DOCS_DIR`.
+If `docs/` doesn't exist or is empty on the first ingestion, `rag ingest` creates three sample
+files so you can try it right away. To use a different folder, change `docs_dir` in
+`config.toml` or set `RAG_DOCS_DIR`.
 
-> PDFs escaneados (só imagem) não têm texto extraível. O `ingest` avisa, mas não faz OCR.
+> Scanned PDFs (images only) have no extractable text. `ingest` warns about them, but it doesn't
+> run OCR.
 
-## Comandos
+## Commands
 
 ```powershell
-uv run rag ingest                         # indexa docs/ (incremental)
-uv run rag stats                          # arquivos, chunks e parâmetros do índice
+uv run rag ingest                         # indexes docs/ (incremental)
+uv run rag stats                          # files, chunks and index parameters
 uv run rag ask "Qual o valor da taxa de inscrição?"
-uv run rag ask "..." --verbose            # + texto dos chunks e rank de cada busca
-uv run rag ask "..." -k 6 --mode vector   # top k e tipo de busca (hybrid | vector | bm25)
-uv run rag eval                           # hit rate e MRR dos três modos de busca
-uv run rag eval -k 8 -v                   # outro k, com o rank por pergunta
-uv run rag eval --mode hybrid -f outro.yaml
+uv run rag ask "..." --verbose            # + chunk text and each search's rank
+uv run rag ask "..." -k 6 --mode vector   # top k and search type (hybrid | vector | bm25)
+uv run rag eval                           # hit rate and MRR for the three search modes
+uv run rag eval -k 8 -v                   # different k, with the rank per question
+uv run rag eval --mode hybrid -f other.yaml
 ```
 
-Com a `.venv` ativada (`.venv\Scripts\activate`), dá para chamar só `rag ...`.
+With the `.venv` activated (`.venv\Scripts\activate`), you can call just `rag ...`.
 
 ### `rag ingest`
 
-- Calcula o SHA-256 de cada arquivo e só reprocessa os novos ou alterados.
-- Remove do índice os arquivos que saíram de `docs/`.
-- Se você mudar `embed_model`, `embed_dim`, `embed_doc_prefix`, `chunk_size` ou `chunk_overlap`,
-  o índice antigo fica incompatível e o `ingest` reindexa tudo automaticamente (e avisa).
-  O `ask` e o `eval` se recusam a rodar até você reindexar.
-- Um arquivo corrompido não derruba a ingestão: ele aparece como falha e é tentado de novo na
-  próxima execução.
+- Computes each file's SHA-256 and only reprocesses new or changed files.
+- Removes from the index any files that left `docs/`.
+- If you change `embed_model`, `embed_dim`, `embed_doc_prefix`, `chunk_size` or `chunk_overlap`,
+  the old index no longer matches, so `ingest` reindexes everything automatically (and tells you
+  why). `ask` and `eval` refuse to run until you reindex.
+- A corrupted file doesn't stop the ingestion: it's reported as a failure and retried on the next
+  run.
 
 ### `rag ask`
 
-Mostra a resposta (em streaming) e uma tabela com os chunks usados e o score de cada um. Com
-`--verbose`, mostra também o texto de cada chunk e, no modo híbrido, a posição e o score que o
-chunk teve na busca vetorial e no BM25. Isso ajuda a entender por que um trecho entrou no
-contexto.
+Shows the answer (streamed) and a table with the chunks used and each one's score. With
+`--verbose`, it also shows each chunk's text and, in hybrid mode, the rank and score the chunk got
+in the vector search and in BM25. That helps you see why a passage ended up in the context.
 
-Se não houver resposta no contexto, o modelo é instruído a responder exatamente
-`Não encontrei nos documentos.`
+If the context doesn't contain the answer, the model is instructed to reply exactly
+`Não encontrei nos documentos.` ("Not found in the documents.").
 
-## Configuração
+## Configuration
 
-Ordem de prioridade: **padrões no código < `config.toml` < variáveis de ambiente `RAG_*`**
-(que também podem vir de um arquivo `.env`; veja `.env.example`).
+Priority order: **code defaults < `config.toml` < `RAG_*` environment variables** (which can
+also come from a `.env` file; see `.env.example`).
 
-| Chave | Padrão | O que é |
+| Key | Default | What it is |
 |---|---|---|
-| `docs_dir` | `docs` | pasta dos documentos |
-| `db_path` | `rag.duckdb` | arquivo do banco (fora de `docs/`, ignorado pelo git) |
-| `eval_file` | `eval/perguntas.yaml` | perguntas do `rag eval` |
-| `ollama_url` | `http://localhost:11434` | servidor Ollama |
-| `embed_model` / `embed_dim` | `nomic-embed-text` / `768` | modelo de embedding e dimensão |
-| `embed_doc_prefix` / `embed_query_prefix` | `search_document: ` / `search_query: ` | prefixos de tarefa do nomic |
-| `gen_model` | `llama3.1` (o `config.toml` usa `qwen2.5-coder:7b`) | modelo de geração |
-| `gen_temperature` / `gen_num_ctx` | `0.1` / `8192` | parâmetros da geração |
-| `chunk_size` / `chunk_overlap` | `800` / `100` | chunking, em caracteres |
-| `top_k` | `4` | chunks no contexto |
-| `search_mode` | `hybrid` | `hybrid`, `vector` ou `bm25` |
-| `candidates` | `20` | candidatos de cada busca antes da fusão |
-| `rrf_k` | `60` | constante do RRF |
+| `docs_dir` | `docs` | documents folder |
+| `db_path` | `rag.duckdb` | database file (outside `docs/`, ignored by git) |
+| `eval_file` | `eval/perguntas.yaml` | questions for `rag eval` |
+| `ollama_url` | `http://localhost:11434` | Ollama server |
+| `embed_model` / `embed_dim` | `nomic-embed-text` / `768` | embedding model and dimension |
+| `embed_doc_prefix` / `embed_query_prefix` | `search_document: ` / `search_query: ` | nomic task prefixes |
+| `gen_model` | `llama3.1` (`config.toml` uses `qwen2.5-coder:7b`) | generation model |
+| `gen_temperature` / `gen_num_ctx` | `0.1` / `8192` | generation parameters |
+| `chunk_size` / `chunk_overlap` | `800` / `100` | chunking, in characters |
+| `top_k` | `4` | chunks in the context |
+| `search_mode` | `hybrid` | `hybrid`, `vector` or `bm25` |
+| `candidates` | `20` | candidates from each search before fusion |
+| `rrf_k` | `60` | RRF constant |
 
-Exemplo, para trocar o modelo de geração só nesta sessão do PowerShell:
+Example, switching the generation model for the current PowerShell session only:
 
 ```powershell
 $env:RAG_GEN_MODEL = "qwen3:8b"; uv run rag ask "..."
 ```
 
-### Modelo de geração
+### Generation model
 
-O `config.toml` vem com `qwen2.5-coder:7b`, que serve **só para validar o pipeline**. Ele é
-especializado em código. Para uso real, prefira um **modelo de instrução geral**, que segue
-melhor as regras do prompt e escreve um português mais natural:
+`config.toml` ships with `qwen2.5-coder:7b`, which is there **only to validate the pipeline**.
+It's specialized in code. For real use, prefer a **general instruction model**, which follows the
+prompt rules better and writes more natural Portuguese:
 
-- **`qwen3:8b`**: o mais indicado. Ele "pensa" antes de responder: fica mais lento, mas o
-  raciocínio não aparece na saída, porque o código exibe só `message.content`.
-- **`qwen2.5:7b`**: mais rápido, bom em português.
+- **`qwen3:8b`**: the top pick. It "thinks" before answering: slower, but the reasoning doesn't
+  show up in the output, because the code only prints `message.content`.
+- **`qwen2.5:7b`**: faster, good at Portuguese.
 
 ```powershell
 ollama pull qwen3:8b
-# e em config.toml: gen_model = "qwen3:8b"
+# and in config.toml: gen_model = "qwen3:8b"
 ```
 
-Trocar o modelo de geração **não** exige reindexar. Só o modelo de embedding exige.
+Changing the generation model does **not** require reindexing. Only the embedding model does.
 
-## Avaliação (`rag eval`)
+## Evaluation (`rag eval`)
 
-O `eval/perguntas.yaml` traz perguntas com gabarito. Um chunk recuperado conta como acerto quando
-atende **a todos** os critérios informados:
+`eval/perguntas.yaml` holds questions with expected answers. A retrieved chunk counts as a hit
+when it meets **all** the criteria given:
 
 ```yaml
 perguntas:
-  - pergunta: Quanto custa a inscrição?
-    fonte: edital-dataprev_supe-versaofinal.pdf   # caminho relativo em docs/
-    pagina: 5                                     # opcional (PDF)
-    trecho: R$ 110,00                             # opcional; comparado sem acento/caixa
+  - pergunta: Quanto custa a inscrição?                # question
+    fonte: edital-dataprev_supe-versaofinal.pdf       # source: relative path in docs/
+    pagina: 5                                         # page: optional (PDF)
+    trecho: R$ 110,00                                 # passage: optional; compared ignoring accents/case
 ```
 
-- **Hit rate@k**: fração das perguntas em que algum chunk relevante veio no top k.
-- **MRR@k**: média de `1/posição` do primeiro chunk relevante (0 quando não vem). Ela premia
-  trazer o trecho certo em primeiro lugar.
+- **Hit rate@k**: share of questions where some relevant chunk came back in the top k.
+- **MRR@k**: mean of `1/rank` of the first relevant chunk (0 when none comes back). It rewards
+  putting the right passage first.
 
-Sem `--mode`, o comando compara os três modos lado a lado. Ele também avisa quando o gabarito de
-uma pergunta não bate com **nenhum** chunk do índice (fonte errada ou trecho partido entre dois
-chunks). Sem esse aviso, um erro no gabarito apareceria como métrica baixa.
+Without `--mode`, the command compares the three modes side by side. It also warns when a
+question's expected answer matches **no** chunk in the index (wrong source, or a passage split
+across two chunks). Without that warning, a mistake in the expected answers would show up as a
+low score.
 
-**Como comparar ajustes:** mude um parâmetro por vez, rode `rag ingest` se for de indexação e
-depois `rag eval -v`. Exemplos:
+**How to compare tweaks:** change one parameter at a time, run `rag ingest` if it's an indexing
+parameter, then run `rag eval -v`. Examples:
 
 ```powershell
 $env:RAG_CHUNK_SIZE = "500"; $env:RAG_CHUNK_OVERLAP = "80"; uv run rag ingest; uv run rag eval -v
-$env:RAG_CANDIDATES = "50"; uv run rag eval      # não exige reindexar
+$env:RAG_CANDIDATES = "50"; uv run rag eval      # no reindex needed
 Remove-Item Env:RAG_CHUNK_SIZE, Env:RAG_CHUNK_OVERLAP, Env:RAG_CANDIDATES; uv run rag ingest
 ```
 
-Resultado inicial (16 perguntas, chunks de 800/100, `nomic-embed-text`):
+Initial results (16 questions, 800/100 chunks, `nomic-embed-text`):
 
-| Modo | Hit rate@4 | MRR@4 | Hit rate@8 | MRR@8 |
+| Mode | Hit rate@4 | MRR@4 | Hit rate@8 | MRR@8 |
 |---|---|---|---|---|
-| hybrid | 56,2% | 0,448 | 75,0% | 0,477 |
-| vector | 43,8% | 0,406 | 50,0% | 0,419 |
-| bm25 | 68,8% | 0,516 | 75,0% | 0,523 |
+| hybrid | 56.2% | 0.448 | 75.0% | 0.477 |
+| vector | 43.8% | 0.406 | 50.0% | 0.419 |
+| bm25 | 68.8% | 0.516 | 75.0% | 0.523 |
 
-Neste corpus, um edital cheio de termos exatos, o BM25 sozinho supera a busca vetorial, e a
-fusão fica no meio. Isso é ponto de partida para ajustes, não conclusão.
+On this corpus, a public-exam notice full of exact terms, BM25 alone beats vector search, and the
+fusion lands in between. Treat this as a starting point for tuning, not a conclusion.
 
-## Testes
+## Tests
 
 ```powershell
 uv run pytest -q
 ```
 
-Os testes cobrem chunking, ingestão incremental, busca vetorial, BM25 (acentos, stemming e
-stopwords), RRF, prompt e métricas. Eles **não precisam do Ollama**: um `FakeEmbedder`
-(bag-of-words com hashing) substitui os embeddings, e o cliente HTTP é testado com
-`httpx.MockTransport`. A primeira execução precisa de internet para o DuckDB baixar a extensão
-`fts`, se ela ainda não estiver no cache.
+The tests cover chunking, incremental ingestion, vector search, BM25 (accents, stemming and
+stopwords), RRF, the prompt and the metrics. They **don't need Ollama**: a `FakeEmbedder`
+(hashed bag-of-words) stands in for the embeddings, and the HTTP client is tested with
+`httpx.MockTransport`. The first run needs internet access so DuckDB can download the `fts`
+extension, if it isn't cached yet.
 
-## Estrutura
+## Layout
 
 ```
-├── config.toml              # configuração
-├── docs/                    # seus documentos
-├── eval/perguntas.yaml      # conjunto de avaliação
+├── config.toml              # configuration
+├── docs/                    # your documents
+├── eval/perguntas.yaml      # evaluation set
 ├── src/rag_local/
-│   ├── config.py            # Settings tipado: padrões < config.toml < RAG_*
-│   ├── loaders.py           # md/txt/pdf/docx -> seções (texto + página)
-│   ├── chunking.py          # janela de caracteres com quebra em parágrafo/frase
-│   ├── ollama.py            # cliente HTTP mínimo com erros acionáveis
-│   ├── embeddings.py        # /api/embed em lotes, com prefixos de tarefa
-│   ├── store.py             # DuckDB: schema, transações, busca vetorial e FTS
-│   ├── ingest.py            # hash -> diff -> carregar -> chunk -> embed -> gravar
-│   ├── retrieval.py         # vetorial, BM25 e RRF
-│   ├── generation.py        # prompt e /api/chat em streaming
-│   ├── evaluation.py        # hit rate e MRR
-│   ├── samples.py           # documentos de exemplo
+│   ├── config.py            # typed Settings: defaults < config.toml < RAG_*
+│   ├── loaders.py           # md/txt/pdf/docx -> sections (text + page)
+│   ├── chunking.py          # character window that breaks at paragraph/sentence
+│   ├── ollama.py            # minimal HTTP client with actionable errors
+│   ├── embeddings.py        # batched /api/embed, with task prefixes
+│   ├── store.py             # DuckDB: schema, transactions, vector search and FTS
+│   ├── ingest.py            # hash -> diff -> load -> chunk -> embed -> store
+│   ├── retrieval.py         # vector, BM25 and RRF
+│   ├── generation.py        # prompt and streamed /api/chat
+│   ├── evaluation.py        # hit rate and MRR
+│   ├── samples.py           # sample documents
 │   └── cli.py               # typer: ingest, ask, stats, eval
 └── tests/
 ```
 
-## Schema no DuckDB
+## DuckDB schema
 
 ```sql
 files  (source VARCHAR PRIMARY KEY, sha256 VARCHAR, size_bytes BIGINT, n_chunks INTEGER, ingested_at TIMESTAMP)
 chunks (id BIGINT PRIMARY KEY DEFAULT nextval('chunks_id_seq'), source VARCHAR, page INTEGER,
         chunk_index INTEGER, text VARCHAR, embedding FLOAT[768])
-meta   (key VARCHAR PRIMARY KEY, value VARCHAR)   -- parâmetros com que o índice foi gerado
-stopwords_pt (sw VARCHAR)                         -- stopwords do índice FTS
-fts_main_chunks.*                                 -- criado pela extensão fts
+meta   (key VARCHAR PRIMARY KEY, value VARCHAR)   -- parameters the index was built with
+stopwords_pt (sw VARCHAR)                         -- stopwords for the FTS index
+fts_main_chunks.*                                 -- created by the fts extension
 ```
 
-Dá para inspecionar o banco direto: `uv run python -c "import duckdb; print(duckdb.connect('rag.duckdb').sql('from files'))"`.
+You can inspect the database directly: `uv run python -c "import duckdb; print(duckdb.connect('rag.duckdb').sql('from files'))"`.
 
-## Decisões de arquitetura
+## Architecture decisions
 
-- **Sem frameworks.** O pipeline inteiro cabe em ~1.300 linhas, CLI incluída. O objetivo é entender cada etapa,
-  não esconder as etapas atrás de abstrações.
-- **DuckDB como banco vetorial.** Arrays `FLOAT[768]` com `array_cosine_similarity` fazem busca
-  exata, uma varredura completa. Para milhares de chunks isso leva milissegundos, e o resultado
-  é exato (sem a aproximação de índices HNSW). Se o corpus crescer muito, a extensão `vss` do
-  DuckDB adiciona HNSW sem trocar de banco.
-- **Chunking por caracteres, nunca atravessando páginas.** Cada página do PDF é chunkada
-  separadamente, então a citação `[arquivo.pdf, p. N]` é sempre exata. O corte procura, na
-  segunda metade da janela, um fim de parágrafo, depois um fim de frase, depois uma quebra de
-  linha e por fim um espaço. Isso evita chunks minúsculos. O overlap recomeça no início de uma
-  palavra.
-- **Prefixos `search_document:` / `search_query:`.** O `nomic-embed-text` foi treinado com eles;
-  sem os prefixos, o retrieval piora. Eles são configuráveis, para outros modelos.
-- **Busca híbrida com RRF.** O cosseno vai de 0 a 1 e o BM25 não tem teto, então os scores não
-  são comparáveis. O RRF usa só as posições (`Σ 1/(60 + rank)`) e dispensa normalização. Cada
-  busca traz `candidates` itens antes da fusão.
-- **BM25 em português.** O índice usa stemmer `portuguese`, remoção de acentos, uma lista própria
-  de stopwords (sem "não", que muda o sentido) e preserva dígitos. O padrão do DuckDB descartaria
-  números como "001/2026" e "R$ 110".
-- **O índice FTS é recriado a cada ingestão que muda algo.** O DuckDB não atualiza esse índice
-  sozinho quando a tabela muda.
-- **Sem FOREIGN KEY entre `chunks` e `files`.** No DuckDB, FK atrapalha apagar e reinserir. A
-  consistência vem de uma transação por arquivo (apaga chunks, insere novos, atualiza `files`).
-- **Tabela `meta`.** Ela guarda modelo, dimensão e parâmetros de chunking do índice. Isso impede
-  misturar vetores de modelos diferentes ou consultar com um índice inconsistente.
-- **Respostas em streaming, com `num_ctx` explícito.** O contexto padrão do Ollama pode truncar o
-  prompt em silêncio. Sem nenhum chunk recuperado, o modelo nem é chamado.
-- **Fora do escopo, de propósito:** OCR, reranking com cross-encoder, histórico de conversa e
-  busca com filtros por metadados. São próximos passos naturais.
+- **No frameworks.** The whole pipeline fits in ~1,300 lines, CLI included. The goal is to
+  understand each step, not hide the steps behind abstractions.
+- **DuckDB as the vector store.** `FLOAT[768]` arrays with `array_cosine_similarity` do exact
+  search, a full scan. For thousands of chunks that takes milliseconds, and the result is exact
+  (no approximation, unlike HNSW indexes). If the corpus grows a lot, DuckDB's `vss` extension
+  adds HNSW without switching databases.
+- **Character chunking that never crosses pages.** Each PDF page is chunked on its own, so the
+  `[file.pdf, p. N]` citation is always exact. The cut looks, in the second half of the window,
+  for a paragraph end, then a sentence end, then a line break, and finally a space. That avoids
+  tiny chunks. The overlap restarts at the beginning of a word.
+- **`search_document:` / `search_query:` prefixes.** `nomic-embed-text` was trained with them;
+  without the prefixes, retrieval gets worse. They're configurable, for other models.
+- **Hybrid search with RRF.** Cosine ranges from 0 to 1 and BM25 has no upper bound, so the
+  scores aren't comparable. RRF only uses the ranks (`Σ 1/(60 + rank)`), so no normalization is
+  needed. Each search returns `candidates` items before fusion.
+- **Portuguese BM25.** The index uses the `portuguese` stemmer, accent stripping, a custom
+  stopword list (without "não", which changes the meaning) and keeps digits. DuckDB's default
+  would drop numbers like "001/2026" and "R$ 110".
+- **The FTS index is rebuilt on every ingestion that changes something.** DuckDB doesn't update
+  this index on its own when the table changes.
+- **No FOREIGN KEY between `chunks` and `files`.** In DuckDB, a FK gets in the way of deleting and
+  re-inserting. Consistency comes from one transaction per file (delete chunks, insert new ones,
+  update `files`).
+- **`meta` table.** It stores the index's model, dimension and chunking parameters. That prevents
+  mixing vectors from different models, or querying an inconsistent index.
+- **Streamed answers, with explicit `num_ctx`.** Ollama's default context can silently truncate
+  the prompt. If no chunk is retrieved, the model isn't even called.
+- **Deliberately out of scope:** OCR, cross-encoder reranking, conversation history and
+  metadata-filtered search. These are natural next steps.
