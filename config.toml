@@ -1,0 +1,35 @@
+# Configuração do rag-local.
+# Caminhos relativos são resolvidos a partir da raiz do projeto (onde está este arquivo).
+# Qualquer chave pode ser sobrescrita por variável de ambiente RAG_<CHAVE> (ou no .env),
+# por exemplo: RAG_GEN_MODEL=qwen3:8b
+
+[paths]
+docs_dir = "docs"
+db_path = "rag.duckdb"
+eval_file = "eval/perguntas.yaml"
+
+[ollama]
+ollama_url = "http://localhost:11434"
+embed_model = "nomic-embed-text"
+embed_dim = 768
+# Prefixos de tarefa que o nomic-embed-text espera. Para outros modelos, deixe "".
+embed_doc_prefix = "search_document: "
+embed_query_prefix = "search_query: "
+# Usado só para validar o pipeline. Para uso real, prefira um modelo de instrução geral
+# (qwen3:8b ou qwen2.5:7b). Sem esta linha, o padrão é llama3.1.
+gen_model = "qwen2.5-coder:7b"
+gen_temperature = 0.1
+gen_num_ctx = 8192
+
+[chunking]
+chunk_size = 800
+chunk_overlap = 100
+
+[retrieval]
+top_k = 4
+# hybrid | vector | bm25
+search_mode = "hybrid"
+# Quantos candidatos cada busca (vetorial e BM25) traz antes da fusão.
+candidates = 20
+# Constante do Reciprocal Rank Fusion (60 é o valor do artigo original).
+rrf_k = 60

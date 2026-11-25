@@ -1,0 +1,89 @@
+# Conjunto de avaliação do retrieval (`rag eval`).
+#
+# Cada item tem a pergunta e o gabarito. Um chunk recuperado conta como acerto quando atende
+# a TODOS os critérios informados:
+#   fonte:  caminho relativo dentro de docs (obrigatório se não houver trecho)
+#   pagina: página do PDF (opcional)
+#   trecho: texto que precisa estar dentro do chunk (comparado sem acento/caixa/espaços extras).
+#           Use trechos curtos: um trecho longo pode cair na fronteira entre dois chunks.
+#
+# Dica: misture perguntas com as mesmas palavras do documento (favorecem BM25) e perguntas
+# parafraseadas (favorecem a busca vetorial).
+
+perguntas:
+  # --- Edital (PDF) ---
+  - pergunta: Quantas vagas o concurso da Dataprev oferece?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    pagina: 1
+    trecho: 212 (duzentos e doze) vagas
+
+  - pergunta: Por quanto tempo o concurso continua válido depois da homologação?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    pagina: 1
+    trecho: prazo de validade do Concurso será de 2 (dois) anos
+
+  - pergunta: Para qual e-mail devo mandar uma impugnação do edital?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    pagina: 2
+    trecho: concursodataprev26@fgv.br
+
+  - pergunta: Quanto custa a inscrição?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    trecho: R$ 110,00
+
+  - pergunta: Em que período ficam abertas as inscrições?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    pagina: 5
+    trecho: 06 de julho de 2026 a 06 de agosto de 2026
+
+  - pergunta: Qual a idade mínima exigida para assumir o cargo?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    pagina: 4
+    trecho: idade mínima de 18 anos
+
+  - pergunta: Qual o prazo de recurso se minha inscrição como pessoa com deficiência for negada?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    pagina: 10
+    trecho: pessoa com deficiência for indeferido
+
+  - pergunta: De quanto em quanto tempo a candidata lactante pode amamentar durante a prova?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    pagina: 16
+    trecho: a cada intervalo de 02 (duas) horas
+
+  - pergunta: Como é calculada a nota final do candidato?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    pagina: 22
+    trecho: Nota Final será a nota obtida na Prova Objetiva
+
+  - pergunta: Posso levar garrafa de água e lanche para a sala de prova?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    pagina: 22
+    trecho: material transparente e sem rótulos
+
+  - pergunta: Quando o candidato precisa se autodeclarar quilombola?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    pagina: 13
+    trecho: se declarar quilombola
+
+  - pergunta: Quantos integrantes indígenas precisam assinar o documento de pertencimento étnico?
+    fonte: edital-dataprev_supe-versaofinal.pdf
+    pagina: 13
+    trecho: 3 (três) integrantes indígenas
+
+  # --- Plano de estudo (DOCX) ---
+  - pergunta: Qual é a data da prova segundo o plano de estudo?
+    fonte: plano-dataprev-perfil4-v2.md.docx
+    trecho: "Prova: 11/10/2026"
+
+  - pergunta: Em que dia eu estudo SVM e K-NN?
+    fonte: plano-dataprev-perfil4-v2.md.docx
+    trecho: "Segunda (CD): SVM e K-NN"
+
+  - pergunta: Por que Ciência de Dados aparece duas vezes por semana no plano?
+    fonte: plano-dataprev-perfil4-v2.md.docx
+    trecho: eixo mais extenso do Perfil 4
+
+  - pergunta: Quando estudo a Lei de Acesso à Informação?
+    fonte: plano-dataprev-perfil4-v2.md.docx
+    trecho: LAI (12.527/2011)
