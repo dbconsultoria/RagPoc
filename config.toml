@@ -26,7 +26,9 @@ chunk_size = 800
 chunk_overlap = 100
 
 [retrieval]
-top_k = 4
+# 8 e não 4: termos como "taxa de inscrição" se repetem em dezenas de trechos, e o que tem
+# o valor ficava entre o 5º e o 8º lugar (eval hybrid: 56% -> 75% de hit rate).
+top_k = 8
 # hybrid | vector | bm25
 search_mode = "hybrid"
 # Quantos candidatos cada busca (vetorial e BM25) traz antes da fusão.

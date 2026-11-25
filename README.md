@@ -121,7 +121,7 @@ also come from a `.env` file; see `.env.example`).
 | `gen_model` | `llama3.1` (`config.toml` uses `qwen2.5-coder:7b`) | generation model |
 | `gen_temperature` / `gen_num_ctx` | `0.1` / `8192` | generation parameters |
 | `chunk_size` / `chunk_overlap` | `800` / `100` | chunking, in characters |
-| `top_k` | `4` | chunks in the context |
+| `top_k` | `8` | chunks in the context |
 | `search_mode` | `hybrid` | `hybrid`, `vector` or `bm25` |
 | `candidates` | `20` | candidates from each search before fusion |
 | `rrf_k` | `60` | RRF constant |
@@ -225,6 +225,134 @@ extension, if it isn't cached yet.
 └── tests/
 ```
 
+## Architecture
+
+### Overview
+
+Indexing and querying are separate flows. During ingestion, files are loaded, split into chunks
+and embedded. When you ask a question, retrieval combines vector search with BM25. DuckDB sits
+between the two flows: it stores the files, chunks, embeddings, index parameters and the FTS
+index that BM25 uses.
+
+```mermaid
+flowchart LR
+    subgraph ING["Ingestion"]
+        DOCS["docs/ folder<br/>.md, .txt, .pdf, .docx"] --> LOAD["Loaders<br/>recursive read"]
+        LOAD --> CHUNK["Chunking<br/>800 chars / overlap 100"]
+        CHUNK --> EMBED_DOC["Embeddings<br/>Ollama: nomic-embed-text<br/>768 dimensions"]
+    end
+
+    DB[("DuckDB<br/>files / chunks / meta<br/>stopwords_pt + FTS")]
+    EMBED_DOC -->|vectors + chunks| DB
+
+    subgraph QUERY["Query"]
+        USER["User"] --> CLI["CLI<br/>rag ask"]
+        CLI --> RET["Retrieval"]
+        RET --> EMBED_Q["Ollama embeddings<br/>search_query: prefix"]
+        EMBED_Q -->|question vector| VSEARCH["Vector search"]
+        RET --> BSEARCH["BM25 search / FTS"]
+        VSEARCH --> RRF["RRF fusion<br/>hybrid mode"]
+        BSEARCH --> RRF
+        RRF --> GEN["Generation<br/>Ollama /api/chat<br/>configured model"]
+        GEN --> CLI
+        CLI --> USER
+    end
+
+    DB -->|chunks + embeddings| VSEARCH
+    DB -->|chunks + FTS index| BSEARCH
+    CLI --> EVAL["rag eval<br/>hit rate@k / MRR@k"]
+    EVAL --> RET
+
+    classDef storage fill:#e8f0fe,stroke:#356ac3,color:#17365d;
+    class DB storage;
+```
+
+`rag eval` isn't part of the interactive query. It's a separate flow that runs retrieval over
+`eval/perguntas.yaml` and computes hit rate@k and MRR@k, without calling the generation model.
+
+### Ingestion flow
+
+```mermaid
+flowchart TD
+    START([rag ingest]) --> ENSURE["Check docs/<br/>first run and empty: create samples"]
+    ENSURE --> SIG{"Index parameters<br/>match meta?"}
+    SIG -->|No| RESET["Reset the index<br/>full reindex"]
+    SIG -->|Yes| SCAN
+    RESET --> SCAN["Recursive scan<br/>.md / .txt / .pdf / .docx"]
+
+    SCAN --> DELETED["Compare stored<br/>vs current paths"]
+    DELETED -->|Missing from docs/| REMOVE["Delete chunks and<br/>files row"]
+
+    SCAN --> HASH["SHA-256<br/>of each file"]
+    HASH --> COMPARE{"Compare with<br/>files.sha256"}
+    COMPARE -->|Not in the database| NEW["New file"]
+    COMPARE -->|Different hash| CHANGED["Changed file"]
+    COMPARE -->|Same hash| SAME["Unchanged file<br/>skip"]
+
+    NEW --> LOAD["Loader<br/>extract text and page"]
+    CHANGED --> LOAD
+    LOAD --> SPLIT["Chunking<br/>800 chars / overlap 100<br/>never crosses pages"]
+    SPLIT --> EMBED["Ollama /api/embed<br/>nomic-embed-text, batches of 32<br/>search_document: prefix"]
+    EMBED --> WRITE["DuckDB: replace chunks<br/>and update files<br/>one transaction per file"]
+    LOAD -.->|corrupted file| FAIL["Report failure<br/>retry on next run"]
+
+    REMOVE --> FTS{"Did the index<br/>change?"}
+    WRITE --> FTS
+    SAME --> FTS
+    FAIL --> FTS
+    FTS -->|Yes, or no FTS yet| REBUILD["Rebuild FTS index<br/>fts_main_chunks"]
+    FTS -->|No| META["Write index<br/>parameters to meta"]
+    REBUILD --> META
+    META --> DONE([Ingestion done])
+```
+
+The index parameters are `embed_model`, `embed_dim`, `embed_doc_prefix`, `chunk_size` and
+`chunk_overlap`. If any of them differs from what's stored in `meta`, the whole index is rebuilt.
+If no chunks are left, the FTS index is dropped instead of rebuilt.
+
+### Query flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant CLI as CLI
+    participant R as Retriever
+    participant E as Ollama embeddings
+    participant DB as DuckDB
+    participant G as Generator
+    participant L as Ollama chat
+
+    U->>CLI: rag ask "question" -k top_k --mode hybrid
+    CLI->>R: search(question, k, mode)
+    R->>E: embed_query("search_query: " + question)
+    E-->>R: question vector
+    R->>DB: vector search (cosine, candidates)
+    DB-->>R: vector ranking
+    Note over R,DB: The two searches run one after the other, not in parallel
+    R->>DB: BM25 search on the FTS index (candidates)
+    DB-->>R: BM25 ranking
+    R->>R: Reciprocal Rank Fusion (rrf_k = 60)
+    R->>R: keep top_k and load the chunks
+    R-->>CLI: chunks + scores + source/page
+    CLI->>G: stream_answer(question, chunks)
+
+    alt No chunk retrieved
+        G-->>CLI: Não encontrei nos documentos.
+        Note over G,L: The chat model isn't called
+    else Chunks retrieved
+        G->>G: build context with [source, p. page] headers
+        G->>L: /api/chat with prompt + context
+        alt Context doesn't contain the answer
+            L-->>G: Não encontrei nos documentos.
+        else Context contains the answer
+            L-->>G: streamed answer with citations
+        end
+        G-->>CLI: answer
+    end
+    CLI-->>U: answer + table of chunks used
+```
+
 ## DuckDB schema
 
 ```sql
@@ -235,6 +363,41 @@ meta   (key VARCHAR PRIMARY KEY, value VARCHAR)   -- parameters the index was bu
 stopwords_pt (sw VARCHAR)                         -- stopwords for the FTS index
 fts_main_chunks.*                                 -- created by the fts extension
 ```
+
+```mermaid
+erDiagram
+    FILES {
+        VARCHAR source PK
+        VARCHAR sha256
+        BIGINT size_bytes
+        INTEGER n_chunks
+        TIMESTAMP ingested_at
+    }
+
+    CHUNKS {
+        BIGINT id PK
+        VARCHAR source
+        INTEGER page
+        INTEGER chunk_index
+        VARCHAR text
+        FLOAT_768 embedding
+    }
+
+    META {
+        VARCHAR key PK
+        VARCHAR value
+    }
+
+    STOPWORDS_PT {
+        VARCHAR sw
+    }
+
+    FILES ||..o{ CHUNKS : "logical link (no FK)"
+```
+
+`FLOAT_768` stands for `FLOAT[768]` (`FLOAT[embed_dim]` in the code), since Mermaid doesn't
+accept brackets in attribute types. The FTS index isn't a table the project creates, so it
+doesn't appear as an entity.
 
 You can inspect the database directly: `uv run python -c "import duckdb; print(duckdb.connect('rag.duckdb').sql('from files'))"`.
 

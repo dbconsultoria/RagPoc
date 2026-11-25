@@ -31,7 +31,7 @@ class Settings:
     chunk_size: int = 800
     chunk_overlap: int = 100
 
-    top_k: int = 4
+    top_k: int = 8
     search_mode: str = "hybrid"
     candidates: int = 20
     rrf_k: int = 60
